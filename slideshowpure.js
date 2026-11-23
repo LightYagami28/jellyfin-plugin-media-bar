@@ -1185,18 +1185,25 @@ for (let i = 0; i <= 4096; i++) {
 const blurHashToSrgbByte = (value) =>
   value <= 0 ? 0 : value >= 1 ? 255 : blurHashSrgbLut[(value * 4096 + 0.5) | 0];
 
-const decodeBlurHashColors = (hash) => {
+const readBlurHashDimensions = (hash) => {
   const sizeFlag = decodeBlurHash83(hash, 0, 1);
-  const numX = (sizeFlag % 9) + 1;
-  const numY = Math.floor(sizeFlag / 9) + 1;
-  const maximumValue = (decodeBlurHash83(hash, 1, 2) + 1) / 13446;
-  const colors = new Float64Array(numX * numY * 3);
+  return {
+    numX: (sizeFlag % 9) + 1,
+    numY: Math.floor(sizeFlag / 9) + 1,
+    maximumValue: (decodeBlurHash83(hash, 1, 2) + 1) / 13446,
+  };
+};
 
+const readBlurHashAverageColor = (hash) => {
   const dc = decodeBlurHash83(hash, 2, 6);
-  colors[0] = blurHashSrgbToLinear((dc >> 16) & 255);
-  colors[1] = blurHashSrgbToLinear((dc >> 8) & 255);
-  colors[2] = blurHashSrgbToLinear(dc & 255);
+  return [
+    blurHashSrgbToLinear((dc >> 16) & 255),
+    blurHashSrgbToLinear((dc >> 8) & 255),
+    blurHashSrgbToLinear(dc & 255),
+  ];
+};
 
+const readBlurHashDetailColors = (hash, colors, numX, numY, maximumValue) => {
   for (let index = 1; index < numX * numY; index++) {
     const value = decodeBlurHash83(hash, 4 + index * 2, 6 + index * 2);
     colors[index * 3] =
@@ -1206,6 +1213,14 @@ const decodeBlurHashColors = (hash) => {
     colors[index * 3 + 2] =
       blurHashSignSqr((value % 19) - 9) * maximumValue;
   }
+};
+
+const decodeBlurHashColors = (hash) => {
+  const { numX, numY, maximumValue } = readBlurHashDimensions(hash);
+  const average = readBlurHashAverageColor(hash);
+  const colors = new Float64Array(numX * numY * 3);
+  colors.set(average);
+  readBlurHashDetailColors(hash, colors, numX, numY, maximumValue);
   if (colors.some((channel) => Number.isNaN(channel))) return null;
   return { colors, numX, numY };
 };
@@ -1226,51 +1241,53 @@ const buildBlurHashCosines = (numX, numY, width, height) => {
   return { cosinesX, cosinesY };
 };
 
-const renderBlurHashPixels = (
-  colors,
-  cosinesX,
-  cosinesY,
-  numX,
-  numY,
-  width,
-  height,
-) => {
-  const bytesPerRow = width * 4;
-  const pixels = new Uint8ClampedArray(bytesPerRow * height);
+const collapseBlurHashRow = (state, y) => {
+  const { colors, cosinesY, numX, numY, height } = state;
   const sums = new Float64Array(numX * 3);
-  for (let y = 0; y < height; y++) {
+  for (let col = 0; col < numX; col++) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    for (let row = 0; row < numY; row++) {
+      const basisY = cosinesY[row * height + y];
+      const colorIndex = (col + row * numX) * 3;
+      red += colors[colorIndex] * basisY;
+      green += colors[colorIndex + 1] * basisY;
+      blue += colors[colorIndex + 2] * basisY;
+    }
+    sums[col * 3] = red;
+    sums[col * 3 + 1] = green;
+    sums[col * 3 + 2] = blue;
+  }
+  return sums;
+};
+
+const renderBlurHashRow = (state, sums, y) => {
+  const { cosinesX, numX, width, pixels, bytesPerRow } = state;
+  for (let x = 0; x < width; x++) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
     for (let col = 0; col < numX; col++) {
-      let red = 0;
-      let green = 0;
-      let blue = 0;
-      for (let row = 0; row < numY; row++) {
-        const basisY = cosinesY[row * height + y];
-        const colorIndex = (col + row * numX) * 3;
-        red += colors[colorIndex] * basisY;
-        green += colors[colorIndex + 1] * basisY;
-        blue += colors[colorIndex + 2] * basisY;
-      }
-      sums[col * 3] = red;
-      sums[col * 3 + 1] = green;
-      sums[col * 3 + 2] = blue;
+      const basis = cosinesX[col * width + x];
+      const colorIndex = col * 3;
+      red += sums[colorIndex] * basis;
+      green += sums[colorIndex + 1] * basis;
+      blue += sums[colorIndex + 2] * basis;
     }
-    for (let x = 0; x < width; x++) {
-      let red = 0;
-      let green = 0;
-      let blue = 0;
-      for (let col = 0; col < numX; col++) {
-        const basis = cosinesX[col * width + x];
-        const colorIndex = col * 3;
-        red += sums[colorIndex] * basis;
-        green += sums[colorIndex + 1] * basis;
-        blue += sums[colorIndex + 2] * basis;
-      }
-      const index = 4 * x + y * bytesPerRow;
-      pixels[index] = blurHashToSrgbByte(red);
-      pixels[index + 1] = blurHashToSrgbByte(green);
-      pixels[index + 2] = blurHashToSrgbByte(blue);
-      pixels[index + 3] = 255;
-    }
+    const index = 4 * x + y * bytesPerRow;
+    pixels[index] = blurHashToSrgbByte(red);
+    pixels[index + 1] = blurHashToSrgbByte(green);
+    pixels[index + 2] = blurHashToSrgbByte(blue);
+    pixels[index + 3] = 255;
+  }
+};
+
+const renderBlurHashPixels = (state) => {
+  const { height, pixels } = state;
+  for (let y = 0; y < height; y++) {
+    const sums = collapseBlurHashRow(state, y);
+    renderBlurHashRow(state, sums, y);
   }
   return pixels;
 };
@@ -1285,15 +1302,15 @@ const decodeBlurHashPixels = (hash, width, height) => {
     width,
     height,
   );
-  return renderBlurHashPixels(
-    decoded.colors,
-    cosines.cosinesX,
-    cosines.cosinesY,
-    decoded.numX,
-    decoded.numY,
+  const state = {
+    ...decoded,
+    ...cosines,
     width,
     height,
-  );
+    bytesPerRow: width * 4,
+    pixels: new Uint8ClampedArray(width * 4 * height),
+  };
+  return renderBlurHashPixels(state);
 };
 
 const BlurHash = {
