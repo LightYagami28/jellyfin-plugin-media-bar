@@ -136,6 +136,8 @@ const CONFIG = {
 
 const STORED_CONFIG_KEY = "mediabar.config";
 const STORED_CONFIG_VERSION = 1;
+const RATING_FRACTION_DIGITS = 1;
+const CRITIC_FRACTION_DIGITS = 0;
 
 const CONFIG_RULES = {
   shuffleInterval: [2000, 600000],
@@ -939,6 +941,15 @@ const SlideUtils = {
     const separator = document.createElement("i");
     separator.className = "material-icons fiber_manual_record separator-icon";
     return separator;
+  },
+
+  formatNumber(value, fractionDigits) {
+    const locale =
+      LocalizationUtils.cachedLocale || navigator.language || undefined;
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(value);
   },
 
   svgNode(markup) {
@@ -2659,7 +2670,9 @@ const SlideCreator = {
         }),
       );
       rating.appendChild(
-        document.createTextNode(item.CommunityRating.toFixed(1)),
+        document.createTextNode(
+          SlideUtils.formatNumber(item.CommunityRating, RATING_FRACTION_DIGITS),
+        ),
       );
       push("rating", rating);
     }
@@ -2672,7 +2685,9 @@ const SlideCreator = {
       );
       if (icon) critics.appendChild(icon);
       critics.appendChild(
-        document.createTextNode(`${item.CriticRating.toFixed(0)}%`),
+        document.createTextNode(
+          `${SlideUtils.formatNumber(item.CriticRating, CRITIC_FRACTION_DIGITS)}%`,
+        ),
       );
       push("critics", critics);
     }
@@ -2747,7 +2762,9 @@ const SlideCreator = {
         }),
       );
       starRating.appendChild(
-        document.createTextNode(communityRating.toFixed(1)),
+        document.createTextNode(
+          SlideUtils.formatNumber(communityRating, RATING_FRACTION_DIGITS),
+        ),
       );
       fields.push(starRating);
     }
@@ -2763,7 +2780,9 @@ const SlideCreator = {
       );
       if (icon) criticRatingElement.appendChild(icon);
       criticRatingElement.appendChild(
-        document.createTextNode(`${criticRating.toFixed(0)}%`),
+        document.createTextNode(
+          `${SlideUtils.formatNumber(criticRating, CRITIC_FRACTION_DIGITS)}%`,
+        ),
       );
       fields.push(criticRatingElement);
     }
