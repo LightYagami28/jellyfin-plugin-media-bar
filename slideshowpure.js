@@ -1114,20 +1114,142 @@ const createLocalPlayer = (video) => ({
   },
 });
 
-const BlurHash = {
-  DIGITS:
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~",
+/*
+ * BlurHash decoding adapted from fast-blurhash 1.2.0 (ISC):
+ * https://github.com/mad-gooze/fast-blurhash
+ * Copyright (c) 2021, Alexey Gusev mad.gooze@gmail.com
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+const BlurHashDigits =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~";
 
-  decode83(str, start, end) {
-    let value = 0;
-    for (let i = start; i < end; i++) {
-      const digit = this.DIGITS.indexOf(str[i]);
-      if (digit === -1) return NaN;
-      value = value * 83 + digit;
+const decodeBlurHash83 = (str, start, end) => {
+  let value = 0;
+  while (start < end) {
+    const digit = BlurHashDigits.indexOf(str[start++]);
+    if (digit === -1) return NaN;
+    value = value * 83 + digit;
+  }
+  return value;
+};
+
+const isValidBlurHash = (hash) => {
+  if (typeof hash !== "string" || hash.length < 6) return false;
+  const sizeFlag = decodeBlurHash83(hash, 0, 1);
+  if (!Number.isFinite(sizeFlag)) return false;
+  const numX = (sizeFlag % 9) + 1;
+  const numY = Math.floor(sizeFlag / 9) + 1;
+  return hash.length === 4 + 2 * numX * numY;
+};
+
+const blurHashSignSqr = (x) => (x < 0 ? -1 : 1) * x * x;
+const blurHashFastCos = (x) => {
+  for (x += Math.PI / 2; x > Math.PI; ) x -= Math.PI * 2;
+  const cos = 1.27323954 * x - 0.405284735 * blurHashSignSqr(x);
+  return 0.225 * (blurHashSignSqr(cos) - cos) + cos;
+};
+const blurHashSrgbToLinear = (value) =>
+  value > 10.31475
+    ? Math.pow(value / 269.025 + 0.052132, 2.4)
+    : value / 3294.6;
+const blurHashLinearToSrgb = (value) =>
+  value > 0.00001227
+    ? 269.025 * Math.pow(value, 0.416666) - 13.025
+    : value * 3294.6;
+const blurHashSrgbLut = new Uint8ClampedArray(4097);
+for (let i = 0; i <= 4096; i++) {
+  blurHashSrgbLut[i] = blurHashLinearToSrgb(i / 4096);
+}
+const blurHashToSrgbByte = (value) =>
+  value <= 0 ? 0 : value >= 1 ? 255 : blurHashSrgbLut[(value * 4096 + 0.5) | 0];
+
+const decodeBlurHashPixels = (hash, width, height) => {
+  if (!isValidBlurHash(hash)) return null;
+  const sizeFlag = decodeBlurHash83(hash, 0, 1);
+  const numX = (sizeFlag % 9) + 1;
+  const numY = Math.floor(sizeFlag / 9) + 1;
+  const maximumValue = (decodeBlurHash83(hash, 1, 2) + 1) / 13446;
+  const colors = new Float64Array(numX * numY * 3);
+
+  const dc = decodeBlurHash83(hash, 2, 6);
+  colors[0] = blurHashSrgbToLinear((dc >> 16) & 255);
+  colors[1] = blurHashSrgbToLinear((dc >> 8) & 255);
+  colors[2] = blurHashSrgbToLinear(dc & 255);
+
+  for (let i = 1; i < numX * numY; i++) {
+    const value = decodeBlurHash83(hash, 4 + i * 2, 6 + i * 2);
+    colors[i * 3] = blurHashSignSqr(Math.floor(value / 361) - 9) * maximumValue;
+    colors[i * 3 + 1] =
+      blurHashSignSqr((Math.floor(value / 19) % 19) - 9) * maximumValue;
+    colors[i * 3 + 2] = blurHashSignSqr((value % 19) - 9) * maximumValue;
+  }
+  if (colors.some((channel) => Number.isNaN(channel))) return null;
+
+  const cosinesY = new Float64Array(numY * height);
+  const cosinesX = new Float64Array(numX * width);
+  for (let j = 0; j < numY; j++) {
+    for (let y = 0; y < height; y++) {
+      cosinesY[j * height + y] = blurHashFastCos((Math.PI * y * j) / height);
     }
-    return value;
-  },
+  }
+  for (let i = 0; i < numX; i++) {
+    for (let x = 0; x < width; x++) {
+      cosinesX[i * width + x] = blurHashFastCos((Math.PI * x * i) / width);
+    }
+  }
 
+  const bytesPerRow = width * 4;
+  const pixels = new Uint8ClampedArray(bytesPerRow * height);
+  const u = new Float64Array(numX * 3);
+  for (let y = 0; y < height; y++) {
+    for (let i = 0; i < numX; i++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let j = 0; j < numY; j++) {
+        const basisY = cosinesY[j * height + y];
+        const colorIndex = (i + j * numX) * 3;
+        r += colors[colorIndex] * basisY;
+        g += colors[colorIndex + 1] * basisY;
+        b += colors[colorIndex + 2] * basisY;
+      }
+      u[i * 3] = r;
+      u[i * 3 + 1] = g;
+      u[i * 3 + 2] = b;
+    }
+    for (let x = 0; x < width; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < numX; i++) {
+        const basis = cosinesX[i * width + x];
+        const colorIndex = i * 3;
+        r += u[colorIndex] * basis;
+        g += u[colorIndex + 1] * basis;
+        b += u[colorIndex + 2] * basis;
+      }
+      const index = 4 * x + y * bytesPerRow;
+      pixels[index] = blurHashToSrgbByte(r);
+      pixels[index + 1] = blurHashToSrgbByte(g);
+      pixels[index + 2] = blurHashToSrgbByte(b);
+      pixels[index + 3] = 255;
+    }
+  }
+  return pixels;
+};
+
+const BlurHash = {
   toLinear(value) {
     const v = value / 255;
     return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
@@ -1140,82 +1262,21 @@ const BlurHash = {
     );
   },
 
-  decodeDC(value) {
-    return [
-      this.toLinear(value >> 16),
-      this.toLinear((value >> 8) & 255),
-      this.toLinear(value & 255),
-    ];
-  },
-
-  decodeAC(value, maxValue) {
-    const quant = (v) => {
-      const n = Math.floor(v);
-      return Math.sign(n - 9) * Math.pow(Math.abs(n - 9) / 9, 2) * maxValue;
-    };
-    return [
-      quant(value / (19 * 19)),
-      quant((value / 19) % 19),
-      quant(value % 19),
-    ];
-  },
-
   toDataURL(hash, width = 32, height = 18) {
     try {
-      if (typeof hash !== "string" || hash.length < 6) return null;
-
-      const sizeFlag = this.decode83(hash, 0, 1);
-      const numX = (sizeFlag % 9) + 1;
-      const numY = Math.floor(sizeFlag / 9) + 1;
-      if (hash.length !== 4 + 2 * numX * numY) return null;
-
-      const maxValue = (this.decode83(hash, 1, 2) + 1) / 166;
-      const colours = new Array(numX * numY);
-      colours[0] = this.decodeDC(this.decode83(hash, 2, 6));
-      for (let i = 1; i < colours.length; i++) {
-        const from = 4 + i * 2;
-        colours[i] = this.decodeAC(
-          this.decode83(hash, from, from + 2),
-          maxValue,
-        );
-      }
-
+      const pixels = decodeBlurHashPixels(hash, width, height);
+      if (!pixels) return null;
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d");
       if (!context) return null;
-
       const imageData = context.createImageData(width, height);
-      const pixels = imageData.data;
-
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          let r = 0;
-          let g = 0;
-          let b = 0;
-          for (let j = 0; j < numY; j++) {
-            for (let i = 0; i < numX; i++) {
-              const basis =
-                Math.cos((Math.PI * x * i) / width) *
-                Math.cos((Math.PI * y * j) / height);
-              const colour = colours[i + j * numX];
-              r += colour[0] * basis;
-              g += colour[1] * basis;
-              b += colour[2] * basis;
-            }
-          }
-          const index = 4 * (x + y * width);
-          pixels[index] = this.fromLinear(r);
-          pixels[index + 1] = this.fromLinear(g);
-          pixels[index + 2] = this.fromLinear(b);
-          pixels[index + 3] = 255;
-        }
-      }
-
+      imageData.data.set(pixels);
       context.putImageData(imageData, 0, 0);
       return canvas.toDataURL();
     } catch (error) {
+      console.warn("Unable to decode BlurHash placeholder:", error);
       return null;
     }
   },
@@ -1223,16 +1284,20 @@ const BlurHash = {
   plateColours(item) {
     const hashes = item?.ImageBlurHashes?.Backdrop;
     const hash = hashes ? Object.values(hashes)[0] : null;
-    if (typeof hash !== "string" || hash.length < 6) return null;
+    if (!isValidBlurHash(hash)) return null;
 
     try {
-      const dc = this.decodeDC(this.decode83(hash, 2, 6));
-      if (dc.some((channel) => Number.isNaN(channel))) return null;
-
-      const luminance = 0.2126 * dc[0] + 0.7152 * dc[1] + 0.0722 * dc[2];
+      const dc = decodeBlurHash83(hash, 2, 6);
+      const average = [
+        this.toLinear((dc >> 16) & 255),
+        this.toLinear((dc >> 8) & 255),
+        this.toLinear(dc & 255),
+      ];
+      const luminance =
+        0.2126 * average[0] + 0.7152 * average[1] + 0.0722 * average[2];
       const pin = (target) => {
         const scale = target / (luminance || 1e-6);
-        return dc.map((channel) => Math.min(1, channel * scale));
+        return average.map((channel) => Math.min(1, channel * scale));
       };
       const toCss = (linear) =>
         `rgb(${linear.map((channel) => this.fromLinear(channel)).join(" ")})`;
@@ -1242,6 +1307,7 @@ const BlurHash = {
         accent: toCss(pin(CONFIG.plateAccentLuminance)),
       };
     } catch (error) {
+      console.warn("Unable to derive BlurHash plate colours:", error);
       return null;
     }
   },
