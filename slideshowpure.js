@@ -1203,7 +1203,8 @@ const readBlurHashAverageColor = (hash) => {
   ];
 };
 
-const readBlurHashDetailColors = (hash, colors, numX, numY, maximumValue) => {
+const readBlurHashDetailColors = (hash, colors, dimensions) => {
+  const { numX, numY, maximumValue } = dimensions;
   for (let index = 1; index < numX * numY; index++) {
     const value = decodeBlurHash83(hash, 4 + index * 2, 6 + index * 2);
     colors[index * 3] =
@@ -1216,11 +1217,12 @@ const readBlurHashDetailColors = (hash, colors, numX, numY, maximumValue) => {
 };
 
 const decodeBlurHashColors = (hash) => {
-  const { numX, numY, maximumValue } = readBlurHashDimensions(hash);
+  const dimensions = readBlurHashDimensions(hash);
+  const { numX, numY } = dimensions;
   const average = readBlurHashAverageColor(hash);
   const colors = new Float64Array(numX * numY * 3);
   colors.set(average);
-  readBlurHashDetailColors(hash, colors, numX, numY, maximumValue);
+  readBlurHashDetailColors(hash, colors, dimensions);
   if (colors.some((channel) => Number.isNaN(channel))) return null;
   return { colors, numX, numY };
 };
