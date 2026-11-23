@@ -2,6 +2,13 @@
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <head>
     <title>Media Bar</title>
+    <style>
+        .jellyfin-tab-label {
+            font-size: 1em;
+            font-weight: 500;
+            margin: 0;
+        }
+    </style>
 </head>
 <body>
 <div data-role="page" id="mediaBarConfigurationPage" class="page type-interior pluginConfigurationPage fullWidthContent">
@@ -18,8 +25,8 @@
         </div>
         <hr class="solid" style="margin-bottom: 1.5em;">
         <div style="margin-bottom: 1.5em;">
-            <button class="jellyfin-tab-button active" data-tab="general" style="background: none; border: none; color: #fff; cursor: pointer; transition: color 0.3s, border-bottom 0.3s; border-bottom: 2px solid #fff; padding: 0.5em 1em;"><h3>General Settings</h3></button>
-            <button class="jellyfin-tab-button" data-tab="web-config" style="background: none; border: none; color: #ccc; cursor: pointer; transition: color 0.3s, border-bottom 0.3s; border-bottom: 2px solid transparent; padding: 0.5em 1em;"><h3>Web Config Settings</h3></button>
+            <button class="jellyfin-tab-button active" data-tab="general" style="background: none; border: none; color: #fff; cursor: pointer; transition: color 0.3s, border-bottom 0.3s; border-bottom: 2px solid #fff; padding: 0.5em 1em;"><span class="jellyfin-tab-label">General Settings</span></button>
+            <button class="jellyfin-tab-button" data-tab="web-config" style="background: none; border: none; color: #ccc; cursor: pointer; transition: color 0.3s, border-bottom 0.3s; border-bottom: 2px solid transparent; padding: 0.5em 1em;"><span class="jellyfin-tab-label">Web Config Settings</span></button>
         </div>
 
         <form class="mediaBarConfigurationForm">
