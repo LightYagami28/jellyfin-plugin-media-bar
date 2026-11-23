@@ -640,18 +640,27 @@ const initLoadingScreen = () => {
   const loadingDiv = document.createElement("div");
   loadingDiv.className = "bar-loading";
   loadingDiv.id = "page-loader";
-  loadingDiv.innerHTML = `
-    <div class="loader-content">
-      <h1>
-        <div class="splashLogo"></div>
-      </h1>
-      <div class="progress-container">
-        <div class="progress-bar" id="progress-bar"></div>
-        <div class="progress-gap" id="progress-gap"></div>
-        <div class="unfilled-bar" id="unfilled-bar"></div>
-      </div>
-    </div>
-  `;
+
+  const loaderContent = document.createElement("div");
+  loaderContent.className = "loader-content";
+
+  const splashLogo = document.createElement("div");
+  splashLogo.className = "splashLogo";
+  const loaderHeading = document.createElement("h1");
+  loaderHeading.appendChild(splashLogo);
+  loaderContent.appendChild(loaderHeading);
+
+  const progressContainer = document.createElement("div");
+  progressContainer.className = "progress-container";
+  ["progress-bar", "progress-gap", "unfilled-bar"].forEach((name) => {
+    const bar = document.createElement("div");
+    bar.className = name;
+    bar.id = name;
+    progressContainer.appendChild(bar);
+  });
+  loaderContent.appendChild(progressContainer);
+
+  loadingDiv.appendChild(loaderContent);
   document.body.appendChild(loadingDiv);
 
   requestAnimationFrame(() => {
@@ -932,6 +941,20 @@ const SlideUtils = {
     return separator;
   },
 
+  svgNode(markup) {
+    try {
+      const parsed = new DOMParser().parseFromString(markup, "image/svg+xml");
+      if (parsed.querySelector("parsererror")) {
+        console.warn("Unable to parse SVG icon; skipping it.");
+        return null;
+      }
+      return document.importNode(parsed.documentElement, true);
+    } catch (error) {
+      console.warn("Unable to parse SVG icon:", error);
+      return null;
+    }
+  },
+
   createElement(tag, attributes = {}, content = null) {
     const element = document.createElement(tag);
 
@@ -942,8 +965,6 @@ const SlideUtils = {
         });
       } else if (key === "className") {
         element.className = value;
-      } else if (key === "innerHTML") {
-        element.innerHTML = value;
       } else if (key === "textContent") {
         element.textContent = value;
       } else if (key.startsWith("on") && typeof value === "function") {
@@ -2621,8 +2642,8 @@ const SlideCreator = {
     const line = SlideUtils.createElement("div", { className: "spec-line" });
 
     const parts = [];
-    const push = (kind, value, html) => {
-      if (value) parts.push([kind, value, Boolean(html)]);
+    const push = (kind, value) => {
+      if (value) parts.push([kind, value]);
     };
 
     if (typeof item.PremiereDate === "string") {
@@ -2630,20 +2651,30 @@ const SlideCreator = {
       if (!Number.isNaN(year)) push("year", String(year));
     }
     if (typeof item.CommunityRating === "number") {
-      push(
-        "rating",
-        `<span class="material-icons community-rating-star star" aria-hidden="true"></span>` +
-          item.CommunityRating.toFixed(1),
-        true,
+      const rating = document.createDocumentFragment();
+      rating.appendChild(
+        SlideUtils.createElement("span", {
+          className: "material-icons community-rating-star star",
+          "aria-hidden": "true",
+        }),
       );
+      rating.appendChild(
+        document.createTextNode(item.CommunityRating.toFixed(1)),
+      );
+      push("rating", rating);
     }
     if (typeof item.CriticRating === "number") {
-
-      const tomato =
+      const critics = document.createDocumentFragment();
+      const icon = SlideUtils.svgNode(
         item.CriticRating < 60
           ? CONFIG.IMAGE_SVG.rottenTomato
-          : CONFIG.IMAGE_SVG.freshTomato;
-      push("critics", `${tomato}${item.CriticRating.toFixed(0)}%`, true);
+          : CONFIG.IMAGE_SVG.freshTomato,
+      );
+      if (icon) critics.appendChild(icon);
+      critics.appendChild(
+        document.createTextNode(`${item.CriticRating.toFixed(0)}%`),
+      );
+      push("critics", critics);
     }
 
     if (item.ChildCount) {
@@ -2667,12 +2698,13 @@ const SlideCreator = {
       push("genre", item.Genres.slice(0, 2).join(" · "));
     }
 
-    parts.forEach(([kind, text, isHtml]) => {
-      const attrs = { className: `spec-item spec-${kind}` };
-      if (isHtml) attrs.innerHTML = text;
-      line.appendChild(
-        SlideUtils.createElement("span", attrs, isHtml ? null : text),
-      );
+    parts.forEach(([kind, content]) => {
+      const span = SlideUtils.createElement("span", {
+        className: `spec-item spec-${kind}`,
+      });
+      if (typeof content === "string") span.textContent = content;
+      else span.appendChild(content);
+      line.appendChild(span);
     });
 
     if (typeof item.OfficialRating === "string" && item.OfficialRating) {
@@ -2705,27 +2737,35 @@ const SlideCreator = {
     const fields = [];
 
     if (typeof communityRating === "number") {
-      fields.push(
-        SlideUtils.createElement("div", {
-          className: "star-rating-container",
-          innerHTML: `<span class="material-icons community-rating-star star" aria-hidden="true"></span>${communityRating.toFixed(
-            1,
-          )}`,
+      const starRating = SlideUtils.createElement("div", {
+        className: "star-rating-container",
+      });
+      starRating.appendChild(
+        SlideUtils.createElement("span", {
+          className: "material-icons community-rating-star star",
+          "aria-hidden": "true",
         }),
       );
+      starRating.appendChild(
+        document.createTextNode(communityRating.toFixed(1)),
+      );
+      fields.push(starRating);
     }
 
     if (typeof criticRating === "number") {
-      const svgIcon =
+      const criticRatingElement = SlideUtils.createElement("div", {
+        className: "critic-rating",
+      });
+      const icon = SlideUtils.svgNode(
         criticRating < 60
           ? CONFIG.IMAGE_SVG.rottenTomato
-          : CONFIG.IMAGE_SVG.freshTomato;
-      fields.push(
-        SlideUtils.createElement("div", {
-          className: "critic-rating",
-          innerHTML: `${svgIcon}${criticRating.toFixed(0)}%`,
-        }),
+          : CONFIG.IMAGE_SVG.freshTomato,
       );
+      if (icon) criticRatingElement.appendChild(icon);
+      criticRatingElement.appendChild(
+        document.createTextNode(`${criticRating.toFixed(0)}%`),
+      );
+      fields.push(criticRatingElement);
     }
 
     if (typeof premiereDate === "string") {
@@ -3456,9 +3496,11 @@ const SlideshowManager = {
         ? LocalizationUtils.getLocalizedString("Play", "Play")
         : LocalizationUtils.getLocalizedString("ButtonPause", "Pause");
 
-      pauseButton.innerHTML = `<i class="material-icons ${
-        paused ? "play_arrow" : "pause"
-      }"></i>`;
+      pauseButton.replaceChildren(
+        SlideUtils.createElement("i", {
+          className: `material-icons ${paused ? "play_arrow" : "pause"}`,
+        }),
+      );
       pauseButton.setAttribute("aria-label", label);
       pauseButton.setAttribute("title", label);
     }
@@ -4043,17 +4085,18 @@ const SettingsPanel = {
 
     const header = SlideUtils.createElement("div", {
       className: "ss-settings-head",
-      innerHTML: "<h2>Slideshow</h2>",
     });
-    header.append(
-      SlideUtils.createElement("button", {
-        className: "ss-settings-close",
-        type: "button",
-        innerHTML: '<i class="material-icons">close</i>',
-        "aria-label": "Close settings",
-        onclick: () => this.close(),
-      }),
+    header.appendChild(SlideUtils.createElement("h2", {}, "Slideshow"));
+    const closeButton = SlideUtils.createElement("button", {
+      className: "ss-settings-close",
+      type: "button",
+      "aria-label": "Close settings",
+      onclick: () => this.close(),
+    });
+    closeButton.appendChild(
+      SlideUtils.createElement("i", { className: "material-icons" }, "close"),
     );
+    header.appendChild(closeButton);
     panel.append(header);
 
     const body = SlideUtils.createElement("div", { className: "ss-settings-body" });
@@ -4339,74 +4382,89 @@ const SettingsPanel = {
 const initArrowNavigation = () => {
   const container = SlideUtils.getOrCreateSlidesContainer();
 
-  const leftArrow = SlideUtils.createElement("div", {
-    className: "arrow left-arrow",
-    innerHTML: '<i class="material-icons chevron_left"></i>',
-    role: "button",
-    tabIndex: "0",
-    "aria-label": LocalizationUtils.getLocalizedString("Previous", "Previous"),
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      SlideshowManager.prevSlide();
+  const leftArrow = SlideUtils.createElement(
+    "div",
+    {
+      className: "arrow left-arrow",
+      role: "button",
+      tabIndex: "0",
+      "aria-label": LocalizationUtils.getLocalizedString("Previous", "Previous"),
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        SlideshowManager.prevSlide();
+      },
     },
-  });
+    SlideUtils.createElement("i", { className: "material-icons chevron_left" }),
+  );
 
-  const rightArrow = SlideUtils.createElement("div", {
-    className: "arrow right-arrow",
-    innerHTML: '<i class="material-icons chevron_right"></i>',
-    role: "button",
-    tabIndex: "0",
-    "aria-label": LocalizationUtils.getLocalizedString("Next", "Next"),
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      SlideshowManager.nextSlide();
+  const rightArrow = SlideUtils.createElement(
+    "div",
+    {
+      className: "arrow right-arrow",
+      role: "button",
+      tabIndex: "0",
+      "aria-label": LocalizationUtils.getLocalizedString("Next", "Next"),
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        SlideshowManager.nextSlide();
+      },
     },
-  });
+    SlideUtils.createElement("i", { className: "material-icons chevron_right" }),
+  );
 
-  const volumeBtn = SlideUtils.createElement("div", {
-    className: "volume-toggle ss-chrome",
-    innerHTML: '<i class="material-icons">volume_off</i>',
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      SlideshowManager.toggleMute();
+  const volumeBtn = SlideUtils.createElement(
+    "div",
+    {
+      className: "volume-toggle ss-chrome",
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        SlideshowManager.toggleMute();
+      },
     },
-  });
+    SlideUtils.createElement("i", { className: "material-icons" }, "volume_off"),
+  );
 
-  const pauseButton = SlideUtils.createElement("div", {
-    className: "pause-button ss-chrome",
-    innerHTML: '<i class="material-icons">pause</i>',
-    tabIndex: "0",
-    "aria-label": LocalizationUtils.getLocalizedString("ButtonPause", "Pause"),
-    title: LocalizationUtils.getLocalizedString("ButtonPause", "Pause"),
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      SlideshowManager.togglePause();
+  const pauseButton = SlideUtils.createElement(
+    "div",
+    {
+      className: "pause-button ss-chrome",
+      tabIndex: "0",
+      "aria-label": LocalizationUtils.getLocalizedString("ButtonPause", "Pause"),
+      title: LocalizationUtils.getLocalizedString("ButtonPause", "Pause"),
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        SlideshowManager.togglePause();
+      },
     },
-  });
+    SlideUtils.createElement("i", { className: "material-icons" }, "pause"),
+  );
 
-  const settingsBtn = SlideUtils.createElement("div", {
-    className: "ss-settings-toggle ss-chrome",
-    innerHTML: '<i class="material-icons">settings</i>',
-    role: "button",
-    tabIndex: "0",
-    "aria-label": "Slideshow settings",
-    title: "Slideshow settings",
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      SettingsPanel.toggle();
+  const settingsBtn = SlideUtils.createElement(
+    "div",
+    {
+      className: "ss-settings-toggle ss-chrome",
+      role: "button",
+      tabIndex: "0",
+      "aria-label": "Slideshow settings",
+      title: "Slideshow settings",
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        SettingsPanel.toggle();
+      },
+      onkeydown: (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        SettingsPanel.toggle();
+      },
     },
-    onkeydown: (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      e.preventDefault();
-      e.stopPropagation();
-      SettingsPanel.toggle();
-    },
-  });
+    SlideUtils.createElement("i", { className: "material-icons" }, "settings"),
+  );
 
   container.append(leftArrow, rightArrow, volumeBtn, pauseButton, settingsBtn);
 };
