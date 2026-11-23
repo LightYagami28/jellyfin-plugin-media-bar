@@ -16,8 +16,8 @@ requests are especially important.
 
 ## Reporting a Vulnerability
 
-Do not open a public issue for a security problem. Email
-<developer@lightyagami.dev> with:
+Do not open a public issue for a security problem. Use the private vulnerability
+reporting form in this repository's Security tab and include:
 
 - the plugin build and Jellyfin version you tested;
 - the affected file or setting;
