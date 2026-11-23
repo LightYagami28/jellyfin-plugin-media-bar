@@ -19,7 +19,7 @@
         <PackageReference Include="Jellyfin.Common" Version="$(JellyfinNugetVersion)" />
         <PackageReference Include="Jellyfin.Data" Version="$(JellyfinNugetVersion)" />
 
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="Newtonsoft.Json" Version="14.0.1-beta2" />
     </ItemGroup>
     
     <!-- Remove 10.11.0 Specific Code from non 10.11.0 builds -->
