@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "jellyfin-plugin-media-bar"
+type: software
+authors:
+  - family-names: Maule
+    given-names: Alessandro
+    alias: Light Yagami
+    email: maule2703@gmail.com
+license: Other
+license-url: "https://github.com/philsturgeon/dbad"
+repository-code: >-
+  https://github.com/LightYagami28/jellyfin-plugin-media-bar
+date-released: "2026-11-23"
+abstract: >-
+  A featured content bar for Jellyfin, forked from
+  IAmParadox27/jellyfin-plugin-media-bar and based on MakD's Jellyfin Media Bar.
+  Distributed under the Don't Be A Dick Public License.
