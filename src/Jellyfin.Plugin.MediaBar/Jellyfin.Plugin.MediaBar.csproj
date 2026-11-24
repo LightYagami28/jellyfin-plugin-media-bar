@@ -1,11 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <JellyfinVersion>12.0.0</JellyfinVersion>
+        <JellyfinVersion>12.4.0</JellyfinVersion>
         <JellyfinNugetVersion Condition="!$(JellyfinVersion.StartsWith('10.11'))">$(JellyfinVersion)</JellyfinNugetVersion>
         <JellyfinNugetVersion Condition="$(JellyfinVersion.StartsWith('10.11'))">$(JellyfinVersion)</JellyfinNugetVersion>
         <JellyfinNugetVersion Condition="'$(JellyfinVersion)' == '10.11.10'">10.11.9</JellyfinNugetVersion>
-        <JellyfinNugetVersion Condition="$(JellyfinVersion.StartsWith('12.0.0'))">12.0.0</JellyfinNugetVersion>
         <TargetFramework Condition="$(JellyfinVersion.StartsWith('10.11'))">net9.0</TargetFramework>
         <TargetFramework Condition="$(JellyfinVersion.StartsWith('12.'))">net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -20,7 +19,7 @@
         <PackageReference Include="Jellyfin.Common" Version="$(JellyfinNugetVersion)" />
         <PackageReference Include="Jellyfin.Data" Version="$(JellyfinNugetVersion)" />
 
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     </ItemGroup>
     
     <!-- Remove 10.11.0 Specific Code from non 10.11.0 builds -->
