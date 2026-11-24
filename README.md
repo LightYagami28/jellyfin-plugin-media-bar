@@ -233,13 +233,13 @@ Restore the `index.html` file / remove the lines added and you are good to go!!!
 
 ## License
 
-[![Custom: DBAD License](https://img.shields.io/badge/License-Don't_Be_A_Dick-red)](LICENSE)
+[![Custom: DBAD License](https://img.shields.io/badge/License-Don't_Be_A_Dick-red)](LICENSE.md)
 
 
 This project is licensed under a DBAD license prohibiting any commercial use or redistribution.  
 All modifications must be contributed back to this repository.  
 Attribution to the original author (MakD) is required in any use or derivative work.
 
-Please take a look at the [LICENSE](LICENSE) file for full terms.
+Please take a look at the [LICENSE](LICENSE.md) file for full terms.
 
 </details>
